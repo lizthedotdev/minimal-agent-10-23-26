@@ -102,6 +102,21 @@ Any other write is refused, and the agent is told to ask you. Both files are per
 
 You can open any of them in the browser to see or correct what the agent remembers; edits show up on the next message. Their ids are cached in `agent_memory.json`. If you delete that file, the agent finds the folder again by name. The agent creates these files with the `drive.file` scope, which lets it create and edit only files it made itself.
 
+## Clipping class recordings
+
+While the agent runs, a background watcher checks your Google Meet recordings folder every 5 minutes. When a new recording appears and its "Notes by Gemini" doc (which holds the timestamped transcript) is ready, the agent clips it in the background, in its own conversation, waiting while you're mid-question. It:
+
+1. reads the transcript and chat log (`recording_transcript`),
+2. picks funny moments, good teaching explanations, student breakthroughs, quotable lines and demos,
+3. cuts each clip with ffmpeg straight from Drive, reading only the part it needs instead of downloading the whole recording (`clips_save`),
+4. uploads the clips to **Agent/Clips** in your Drive and logs each one in the **Clips** sheet (times, category, why, quote, link).
+
+You need `ffmpeg` installed (`brew install ffmpeg` or `apt install ffmpeg`).
+
+- **Older recordings:** the first time it runs, the agent marks everything already in the folder as seen, so it doesn't clip your whole archive. To clip an older one, type `/clip <part of its name>`, e.g. `/clip Data Activism`.
+- **Settings:** `RECORDINGS_FOLDER` (the folder id), `RECORDINGS_POLL_SECONDS` (default 300), and `RECORDINGS_WATCH=off` to turn the watcher off. What's been handled is kept in `recordings_state.json` (per user, gitignored).
+- Transcripts are people talking, so they're screened for prompt injection like email.
+
 ## How it works
 
 | File | What it does |
@@ -113,6 +128,7 @@ You can open any of them in the browser to see or correct what the agent remembe
 | `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 | `web.py` | Web search (`web_search`) and page reading (`web_read`) through [Tavily](https://tavily.com). Set `TAVILY_API_KEY` to turn them on. |
 | `guard.py` | Screens text from email, the web, Docs, Sheets, Calendar and memory for prompt injection before the model sees it. Each chunk is classified by `openai/gpt-oss-safeguard-20b` (set `GUARD_MODEL` to change it); flagged chunks become `[removed: possible prompt injection]`, and chunks that can't be checked are withheld. |
+| `recordings.py` | Watches the Meet recordings folder, queues new recordings, and provides the `recording_transcript` and `clips_save` tools. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 
 One turn of the conversation goes like this:

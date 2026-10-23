@@ -24,10 +24,12 @@ SCOPES = [  # read-only except Sheets: the agent can't send email, edit events o
 ]
 
 _services = {}  # (name, version) -> API client, built once per run
+_creds = None  # the signed-in user's credentials, shared by every client
 
 
 def _service(name, version):
     """Sign in (first call only) and return a Google API client."""
+    global _creds
     if (name, version) not in _services:
         from google.auth.transport.requests import Request  # imported here so the agent starts without Google set up
         from google.oauth2.credentials import Credentials
@@ -46,8 +48,18 @@ def _service(name, version):
             creds = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES).run_local_server(port=0)
         with open(TOKEN, "w") as f:
             f.write(creds.to_json())
+        _creds = creds
         _services[(name, version)] = build(name, version, credentials=creds)
     return _services[(name, version)]
+
+
+def access_token():
+    """A fresh OAuth access token, for calls made outside the API clients (ffmpeg reading a video from Drive)."""
+    from google.auth.transport.requests import Request
+    _service("drive", "v3")  # signs in if needed
+    if not _creds.valid:
+        _creds.refresh(Request())
+    return _creds.token
 
 
 # --- Gmail ---
