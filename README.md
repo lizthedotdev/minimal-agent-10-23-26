@@ -70,13 +70,14 @@ The model has to support tool calling. If you get errors about tools, try a diff
 |---|---|
 | `agent.py` | The main loop. It reads your input, calls the model, runs any tools the model asks for, and prints the answer. |
 | `prompt.py` | Builds the list of messages the model sees: the system prompt, the conversation so far, and your new message. |
-| `tools.py` | The tools the model can call (`get_time` and `search_memory`), plus the descriptions the model reads to decide when to use them. |
+| `tools.py` | The tools the model can call (`get_time`, `save_memory` and `search_memory`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
+| `memory.py` | Long-term memory: notes stored in a SQLite file (`memory.db`, or set `MEMORY_DB`) and searched with SQLite's built-in full-text search. Delete the file to forget everything. |
 
 One turn of the conversation goes like this:
 
 1. You type a message.
 2. `prompt.py` builds the messages: the system prompt, then the history, then your new message.
-3. The model replies. If the reply asks for tools, `tools.py` runs them, their results go back to the model, and the model is called again.
+3. The model replies. If the reply asks for tools, `tools.py` runs them, their results go back to the model, and the model is called again, up to `MAX_TURNS` (10) times per message.
 4. When the model replies without asking for a tool, that reply is the answer and gets printed.
 5. Your message and the answer are added to `history`.
 
