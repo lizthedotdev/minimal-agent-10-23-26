@@ -196,7 +196,7 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
             "clips": {"type": "array", "items": {"type": "object", "properties": {
                 "start": {"type": "string", "description": "HH:MM:SS from the transcript."},
                 "end": {"type": "string", "description": "HH:MM:SS."},
-                "category": {"type": "string", "enum": ["funny", "teaching", "student", "quote", "demo", "other"]},
+                "category": {"type": "string", "enum": ["lecture", "funny", "teaching", "student", "quote", "demo", "other"]},
                 "title": {"type": "string", "description": "Short title, used in the file name."},
                 "why": {"type": "string", "description": "One line on why it's worth clipping."},
                 "quote": {"type": "string", "description": "The key line, verbatim from the transcript."},

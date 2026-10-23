@@ -32,7 +32,7 @@ LAYERS = {  # spreadsheet name -> {tab: column headers}
         "People": ["name", "email", "relationship", "notes", "updated_at"],
         "Projects": ["name", "status", "notes", "updated_at"],
     }),
-    "clips": ("Clips", {"Clips": ["saved_at", "recording", "start", "end", "category", "title", "why", "quote", "link", "public_match"]}),
+    "clips": ("Clips", {"Clips": ["saved_at", "recording", "start", "end", "category", "title", "why", "quote", "link", "public_match", "pace_wpm"]}),
 }
 SHEET_MIME, FOLDER_MIME = "application/vnd.google-apps.spreadsheet", "application/vnd.google-apps.folder"
 
