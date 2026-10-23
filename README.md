@@ -64,6 +64,16 @@ MODEL=openai/gpt-4o-mini uv run agent.py
 
 The model has to support tool calling. If you get errors about tools, try a different model.
 
+## Web search
+
+The `web_search` and `web_read` tools use [Tavily](https://tavily.com). Create a key there and set it the same way as the OpenRouter key:
+
+```bash
+export TAVILY_API_KEY=tvly-...
+```
+
+Without it, the agent still runs; the web tools just report that they aren't set up.
+
 ## Connecting Google (Gmail, Calendar, Drive, Docs, Sheets)
 
 The agent can read your Gmail, Calendar, Drive and Docs, and read **and write** your Sheets. Its long-term memory is also a Google Sheet, so memory needs this setup too. To set it up once:
@@ -92,9 +102,10 @@ You can open any of them in the browser to see or correct what the agent remembe
 |---|---|
 | `agent.py` | The main loop. It reads your input, calls the model, runs any tools the model asks for, and prints the answer. |
 | `prompt.py` | Builds the list of messages the model sees: the system prompt (with core memory and recent notes), the conversation so far, and your new message. |
-| `tools.py` | The tools the model can call: `get_time`; memory (`save_memory`, `search_memory`, `core_memory_set`, `core_memory_remove`, `memory_overview`); Google reads (`gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read`, `sheets_read`); and Sheets writes (`sheets_create`, `sheets_add_tab`, `sheets_append`, `sheets_update`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
+| `tools.py` | The tools the model can call: `get_time`; memory (`save_memory`, `search_memory`, `core_memory_set`, `core_memory_remove`, `memory_overview`); Google reads (`gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read`, `sheets_read`); Sheets writes (`sheets_create`, `sheets_add_tab`, `sheets_append`, `sheets_update`); and the web (`web_search`, `web_read`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
 | `memory.py` | The agent's three layers of memory (core, recent, long-term), each a Google Sheet in its Drive folder. Puts core memory and recent notes into the prompt, and moves old notes to long-term. |
 | `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
+| `web.py` | Web search (`web_search`) and page reading (`web_read`) through [Tavily](https://tavily.com). Set `TAVILY_API_KEY` to turn them on. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 
 One turn of the conversation goes like this:

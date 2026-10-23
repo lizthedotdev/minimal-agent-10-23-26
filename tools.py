@@ -4,6 +4,7 @@ import json
 
 import google_workspace as google
 import memory
+import web
 
 
 def get_time():
@@ -23,6 +24,7 @@ TOOLS = {  # name -> python function
     "docs_read": google.docs_read, "sheets_read": google.sheets_read,
     "sheets_create": google.sheets_create, "sheets_add_tab": google.sheets_add_tab,
     "sheets_append": google.sheets_append, "sheets_update": google.sheets_update,
+    "web_search": web.web_search, "web_read": web.web_read,
 }
 
 SCHEMAS = [  # what the model is told about each tool (OpenAI-style function schemas)
@@ -151,6 +153,22 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
             "range": {"type": "string", "description": "A1 notation, e.g. 'People!A5:C5'."},
             "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
         }, "required": ["spreadsheet_id", "range", "rows"]},
+    }},
+    {"type": "function", "function": {
+        "name": "web_search",
+        "description": "Search the public web. Returns a short summary and sources with url and content. Cite the "
+                       "urls you rely on. Use web_read to read a full page.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "max_results": {"type": "integer", "description": "Default 5."},
+            "topic": {"type": "string", "enum": ["general", "news", "finance"]},
+            "time_range": {"type": "string", "enum": ["day", "week", "month", "year"]},
+        }, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "web_read",
+        "description": "Read the main text of a web page by url.",
+        "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
     }},
 ]
 
