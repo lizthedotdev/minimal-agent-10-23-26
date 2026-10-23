@@ -56,7 +56,7 @@ Asking for the time makes the model call the `get_time` tool. If you ask what yo
 
 ### Using a different model
 
-The default model is `anthropic/claude-sonnet-5.5`. To try another one, pick any model ID from [openrouter.ai/models](https://openrouter.ai/models) and set `MODEL`:
+The default model is `qwen/qwen3.8-27b`. To try another one, pick any model ID from [openrouter.ai/models](https://openrouter.ai/models) and set `MODEL`:
 
 ```bash
 MODEL=openai/gpt-4o-mini uv run agent.py

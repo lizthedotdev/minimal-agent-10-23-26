@@ -14,7 +14,7 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",  # OpenRouter speaks the OpenAI API
     api_key=os.environ["OPENROUTER_API_KEY"],  # get one at https://openrouter.ai/keys
 )
-MODEL = os.getenv("MODEL", "anthropic/claude-sonnet-5.5")  # any model slug from https://openrouter.ai/models
+MODEL = os.getenv("MODEL", "qwen/qwen3.8-27b")  # any model slug from https://openrouter.ai/models
 
 
 def respond(history, user_input):
