@@ -66,15 +66,17 @@ The model has to support tool calling. If you get errors about tools, try a diff
 
 ## Connecting Google (Gmail, Calendar, Drive, Docs, Sheets)
 
-The agent can read your Gmail, Calendar, Drive, Docs and Sheets. To set it up once:
+The agent can read your Gmail, Calendar, Drive and Docs, and read **and write** your Sheets. Its long-term memory is also a Google Sheet, so memory needs this setup too. To set it up once:
 
 1. In [console.cloud.google.com](https://console.cloud.google.com) create (or pick) a project.
 2. **APIs & Services → Library**: enable Gmail API, Google Calendar API, Google Drive API, Google Docs API and Google Sheets API.
 3. **Google Auth Platform** (formerly "OAuth consent screen") → **Get started**: fill in an app name and support email. Choose Audience **Internal** if you're on Google Workspace (no review, and tokens don't expire). Otherwise choose External and add yourself under **Test users**. In Testing mode the sign-in expires every 7 days; delete `token.json` and sign in again.
 4. **Google Auth Platform → Clients → Create client**, Application type **Desktop app** → **Create** → **Download JSON**. Save it in the project folder as `credentials.json` (or point `GOOGLE_CREDENTIALS` at it).
-5. Run `uv run agent.py` and ask something like "what's on my calendar this week?". A browser opens to sign in and grant read-only access. The token is saved to `token.json` (or `GOOGLE_TOKEN`). Delete it to switch accounts.
+5. Run `uv run agent.py` and ask something like "what's on my calendar this week?". A browser opens to sign in and grant access. The token is saved to `token.json` (or `GOOGLE_TOKEN`). Delete it to switch accounts.
 
-Access is read-only (see the scopes in `google_workspace.py`). `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
+Access is read-only except for Sheets, which the agent can edit: any sheet you can edit, not just its own (see the scopes in `google_workspace.py`). It writes values as plain text, so a formula copied from an email can't run, and `sheets_update` returns the old values so a bad edit can be undone. If the scopes change, the agent asks you to sign in again. `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
+
+**Memory spreadsheet.** On first use the agent creates a spreadsheet called "Agent Memory" in your Drive and saves its id in `agent_sheet.txt`. Notes go on its **Notes** tab, and the agent can add its own tabs (for example People or Follow-ups). Open it in the browser to see or correct what it remembers. Set `AGENT_SHEET_ID` to use an existing spreadsheet instead.
 
 ## How it works
 
@@ -82,9 +84,9 @@ Access is read-only (see the scopes in `google_workspace.py`). `credentials.json
 |---|---|
 | `agent.py` | The main loop. It reads your input, calls the model, runs any tools the model asks for, and prints the answer. |
 | `prompt.py` | Builds the list of messages the model sees: the system prompt, the conversation so far, and your new message. |
-| `tools.py` | The tools the model can call (`get_time`, `save_memory`, `search_memory`, and the read-only Google tools `gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read` and `sheets_read`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
-| `memory.py` | Long-term memory: notes stored in a SQLite file (`memory.db`, or set `MEMORY_DB`) and searched with SQLite's built-in full-text search. Delete the file to forget everything. |
-| `google_workspace.py` | Read-only access to Gmail, Calendar, Drive, Docs and Sheets. Handles the Google sign-in and saves the token to `token.json`. |
+| `tools.py` | The tools the model can call: `get_time`; memory (`save_memory`, `search_memory`, `memory_overview`); Google reads (`gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read`, `sheets_read`); and Sheets writes (`sheets_create`, `sheets_add_tab`, `sheets_append`, `sheets_update`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
+| `memory.py` | Long-term memory in the agent's own "Agent Memory" spreadsheet. Search looks for your words across every tab. |
+| `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 
 One turn of the conversation goes like this:

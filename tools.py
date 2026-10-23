@@ -12,24 +12,16 @@ def get_time():
     return datetime.now().isoformat(timespec="minutes")
 
 
-def save_memory(content):
-    """Save a note to long-term memory (memory.py, a SQLite file)."""
-    return f"Saved memory #{memory.save(content)}."
-
-
-def search_memory(query):
-    """Recall as a tool: the model decides when to look something up."""
-    rows = memory.search(query)
-    if not rows:
-        return "No matching memories."
-    return "\n".join(f"#{id} ({created_at}): {content}" for id, content, created_at in rows)
 
 
 TOOLS = {  # name -> python function
-    "get_time": get_time, "save_memory": save_memory, "search_memory": search_memory,
+    "get_time": get_time,
+    "save_memory": memory.save, "search_memory": memory.search, "memory_overview": memory.overview,
     "gmail_search": google.gmail_search, "gmail_read": google.gmail_read,
     "calendar_events": google.calendar_events, "drive_search": google.drive_search,
     "docs_read": google.docs_read, "sheets_read": google.sheets_read,
+    "sheets_create": google.sheets_create, "sheets_add_tab": google.sheets_add_tab,
+    "sheets_append": google.sheets_append, "sheets_update": google.sheets_update,
 }
 
 SCHEMAS = [  # what the model is told about each tool (OpenAI-style function schemas)
@@ -40,14 +32,16 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "save_memory",
-        "description": "Save a fact or note to long-term memory so it can be recalled in later conversations. "
-                       "Save self-contained statements, e.g. \"The user's name is Sam.\"",
-        "parameters": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]},
+        "description": "Save a note to the Notes tab of your memory spreadsheet so it can be recalled in later "
+                       "conversations. Save self-contained statements, e.g. \"The user's name is Sam.\" For structured "
+                       "records (people, projects, follow-ups), keep your own tab instead: see memory_overview.",
+        "parameters": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]},
     }},
     {"type": "function", "function": {
         "name": "search_memory",
-        "description": "Search long-term memory by keywords. Use it before answering questions about the user "
-                       "or anything that may have come up in a past conversation.",
+        "description": "Search every tab of your memory spreadsheet by keywords. Use it before answering questions "
+                       "about the user or anything that may have come up in a past conversation. Results show each "
+                       "row's location (e.g. Notes!A5) so you can correct it with sheets_update.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
     }},
     {"type": "function", "function": {
@@ -99,6 +93,51 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
             "spreadsheet_id": {"type": "string"},
             "range": {"type": "string", "description": "A1 notation, e.g. 'Sheet1!A1:D50'."},
         }, "required": ["spreadsheet_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "memory_overview",
+        "description": "Show your memory spreadsheet's file_id and its tabs with their columns and row counts. "
+                       "Your memory is yours to organise: add tabs (sheets_add_tab) for things worth tracking as "
+                       "rows, add to them (sheets_append), and fix rows that are out of date (sheets_update).",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "sheets_create",
+        "description": "Create a new Google Sheet. Returns its file_id and link.",
+        "parameters": {"type": "object", "properties": {
+            "title": {"type": "string"},
+            "tabs": {"type": "object", "description": "Tab name -> list of column headers, e.g. "
+                     "{\"People\": [\"name\", \"email\", \"notes\"]}.",
+                     "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        }, "required": ["title"]},
+    }},
+    {"type": "function", "function": {
+        "name": "sheets_add_tab",
+        "description": "Add a tab to a Google Sheet, optionally with column headers.",
+        "parameters": {"type": "object", "properties": {
+            "spreadsheet_id": {"type": "string"},
+            "tab": {"type": "string"},
+            "headers": {"type": "array", "items": {"type": "string"}},
+        }, "required": ["spreadsheet_id", "tab"]},
+    }},
+    {"type": "function", "function": {
+        "name": "sheets_append",
+        "description": "Add rows to the end of a tab. Each row is a list of cell values in column order.",
+        "parameters": {"type": "object", "properties": {
+            "spreadsheet_id": {"type": "string"},
+            "tab": {"type": "string"},
+            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+        }, "required": ["spreadsheet_id", "tab", "rows"]},
+    }},
+    {"type": "function", "function": {
+        "name": "sheets_update",
+        "description": "Overwrite cells in a Google Sheet. This changes the user's data: read the range first, and "
+                       "only edit sheets the user asked you to or your own memory spreadsheet. Returns the old values.",
+        "parameters": {"type": "object", "properties": {
+            "spreadsheet_id": {"type": "string"},
+            "range": {"type": "string", "description": "A1 notation, e.g. 'People!A5:C5'."},
+            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+        }, "required": ["spreadsheet_id", "range", "rows"]},
     }},
 ]
 

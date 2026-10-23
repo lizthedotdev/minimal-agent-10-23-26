@@ -1,35 +1,72 @@
-"""Long-term memory: notes saved to a SQLite file, searched with SQLite's built-in full-text search (FTS5)."""
+"""Long-term memory: the agent's own Google spreadsheet. It keeps notes on a "Notes" tab and can add any tabs it likes.
+
+The spreadsheet ("Agent Memory") is created on first use and its id is saved in agent_sheet.txt; set AGENT_SHEET_ID to
+use an existing one instead. The user can open it in the browser to read or correct what the agent remembers.
+"""
 
 import os
 import re
-import sqlite3
-from contextlib import closing
 from datetime import datetime
 
-DB_PATH = os.getenv("MEMORY_DB", "memory.db")  # survives restarts; delete the file to forget everything
+import google_format as fmt
+import google_workspace as google
+
+ID_FILE = "agent_sheet.txt"
+NOTES_TAB, NOTES_HEADERS = "Notes", ["saved_at", "note"]
 
 
-def _connect():
-    """Open the database, creating the table the first time."""
-    db = sqlite3.connect(DB_PATH)
-    db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories USING fts5(content, created_at UNINDEXED)")
-    return db
+def sheet_id():
+    """The agent's memory spreadsheet, created the first time it's needed."""
+    if os.getenv("AGENT_SHEET_ID"):
+        return os.environ["AGENT_SHEET_ID"]
+    if os.path.exists(ID_FILE):
+        return open(ID_FILE).read().strip()
+    created = google._service("sheets", "v4").spreadsheets().create(body={
+        "properties": {"title": "Agent Memory"}, "sheets": [{"properties": {"title": NOTES_TAB}}],
+    }, fields="spreadsheetId").execute()["spreadsheetId"]
+    google._write(created, f"'{NOTES_TAB}'!A1", [NOTES_HEADERS])
+    with open(ID_FILE, "w") as f:
+        f.write(created)
+    return created
 
 
-def save(content):
-    """Store one note and return its id."""
-    with closing(_connect()) as db, db:  # closing() closes the file; `db` commits on success
-        cur = db.execute("INSERT INTO memories (content, created_at) VALUES (?, ?)",
-                         (content, datetime.now().isoformat(timespec="seconds")))
-    return cur.lastrowid
+def save(note):
+    """Append a note to the Notes tab and return where it landed."""
+    stamp = datetime.now().isoformat(timespec="seconds")
+    return google.sheets_append(sheet_id(), NOTES_TAB, [[stamp, note]])
 
 
-def search(query, limit=5):
-    """Return up to `limit` (id, content, created_at) rows matching any word in `query`, best match first."""
-    words = re.findall(r"\w+", query)  # raw text can break FTS5 syntax (quotes, hyphens), so keep only words
-    if not words:
-        return []
-    match = " OR ".join(f'"{w}"' for w in words)  # any word matches; bm25 ranks notes with more/rarer hits higher
-    with closing(_connect()) as db:
-        return db.execute("SELECT rowid, content, created_at FROM memories WHERE memories MATCH ? ORDER BY rank LIMIT ?",
-                          (match, limit)).fetchall()
+def _tabs():
+    """{tab name: rows (first row = headers)} for every tab in the memory spreadsheet."""
+    sheets = google._service("sheets", "v4").spreadsheets()
+    sid = sheet_id()
+    names = [s["properties"]["title"] for s in sheets.get(spreadsheetId=sid, fields="sheets.properties.title").execute()["sheets"]]
+    ranges = sheets.values().batchGet(spreadsheetId=sid, ranges=[f"'{n}'" for n in names]).execute()["valueRanges"]
+    return {n: r.get("values", []) for n, r in zip(names, ranges)}
+
+
+def overview():
+    """The memory spreadsheet's tabs with their columns and sizes, so the model knows where things go."""
+    tabs = _tabs()
+    lines = [f"Memory spreadsheet file_id {sheet_id()}. Tabs:"]
+    lines += [f"- {name}: {len(rows) - 1 if rows else 0} rows; columns: {', '.join(rows[0]) if rows else '(none)'}"
+              for name, rows in tabs.items()]
+    return "\n".join(lines)
+
+
+def search(query, limit=10):
+    """Rows from every tab that contain any word of `query`, rows with more matching words first."""
+    words = {w.lower() for w in re.findall(r"\w+", query) if len(w) > 1}
+    hits = []
+    for name, rows in _tabs().items():
+        headers = rows[0] if rows else []
+        for i, row in enumerate(rows[1:], start=2):  # sheet row numbers, so the model can update the row in place
+            text = " ".join(map(str, row)).lower()
+            score = sum(w in text for w in words)
+            if score:
+                fields = {(headers[j] if j < len(headers) and headers[j] else f"col{j + 1}"): v for j, v in enumerate(row)}
+                hits.append((score, fmt.block(f"[{name}!A{i}]", fields)))
+    hits.sort(key=lambda h: -h[0])  # stable sort: equal scores keep sheet order
+    return fmt.results("memories", [b for _, b in hits[:limit]],
+                       f"best {limit} of {len(hits)}" if len(hits) > limit else None,
+                       "Try other words, or call memory_overview to see what tabs exist.")
