@@ -1,4 +1,4 @@
-"""Read-only access to Gmail, Calendar, Drive, Docs and Sheets for the agent's Google tools.
+"""Google access for the agent's tools: read Gmail, Calendar, Drive and Docs; read and write Sheets.
 
 Setup once: create an OAuth client of type "Desktop app" in Google Cloud Console, enable the Gmail, Calendar,
 Drive, Docs and Sheets APIs, and save the client's JSON as credentials.json. The first Google tool call opens a
@@ -6,6 +6,7 @@ browser to sign in; the token is then cached in token.json.
 """
 
 import base64
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -13,12 +14,12 @@ import google_format as fmt
 
 CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS", "credentials.json")  # OAuth client secret from Google Cloud
 TOKEN = os.getenv("GOOGLE_TOKEN", "token.json")  # cached sign-in; delete it to sign in again
-SCOPES = [  # read-only: the agent gathers context, it can't send, edit or delete anything
+SCOPES = [  # read-only except Sheets: the agent can't send email, edit events or docs, or delete files
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/documents.readonly",
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",  # read AND write any sheet the user can access
 ]
 
 _services = {}  # (name, version) -> API client, built once per run
@@ -33,6 +34,8 @@ def _service(name, version):
         from googleapiclient.discovery import build
 
         creds = Credentials.from_authorized_user_file(TOKEN, SCOPES) if os.path.exists(TOKEN) else None
+        if creds and not set(SCOPES) <= set(json.load(open(TOKEN)).get("scopes", [])):
+            creds = None  # SCOPES changed since the user signed in: sign in again to grant the new access
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         elif not creds or not creds.valid:
@@ -195,3 +198,53 @@ def sheets_read(spreadsheet_id, range=None):
     rng = range or f"'{tabs[0]['title']}'"
     rows = sheets.values().get(spreadsheetId=sheet_id, range=rng).execute().get("values", [])
     return fmt.cut(f"# {meta['properties']['title']}\ntabs: {tab_list}\nrange: {rng}\n\n{fmt.md_table(rows)}")
+
+
+# --- Sheets: writing ---
+# Values are written RAW: text that looks like a formula (e.g. "=IMPORTXML(...)" copied from an email) stays text,
+# so content the agent reads can't turn into formulas that run in the user's spreadsheet.
+
+def sheets_create(title, tabs=None):
+    """Create a spreadsheet. `tabs` maps tab name -> list of column headers."""
+    tabs = tabs or {"Sheet1": []}
+    sheet = _service("sheets", "v4").spreadsheets().create(body={
+        "properties": {"title": title},
+        "sheets": [{"properties": {"title": name}} for name in tabs],
+    }, fields="spreadsheetId,spreadsheetUrl").execute()
+    for name, headers in tabs.items():
+        if headers:
+            _write(sheet["spreadsheetId"], f"'{name}'!A1", [headers])
+    return fmt.block(f"[file_id {sheet['spreadsheetId']}] {title} (created)",
+                     {"tabs": ", ".join(tabs), "link": sheet["spreadsheetUrl"]})
+
+
+def sheets_add_tab(spreadsheet_id, tab, headers=None):
+    """Add a tab to an existing spreadsheet, optionally with a header row."""
+    sheet_id = fmt.doc_id_from(spreadsheet_id)
+    _service("sheets", "v4").spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id, body={"requests": [{"addSheet": {"properties": {"title": tab}}}]}).execute()
+    if headers:
+        _write(sheet_id, f"'{tab}'!A1", [headers])
+    return f"Added tab '{tab}'" + (f" with columns: {', '.join(headers)}" if headers else "") + "."
+
+
+def sheets_append(spreadsheet_id, tab, rows):
+    """Add rows after the last row of a tab."""
+    result = _service("sheets", "v4").spreadsheets().values().append(
+        spreadsheetId=fmt.doc_id_from(spreadsheet_id), range=f"'{tab}'", valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS", body={"values": rows}).execute()
+    return f"Appended {len(rows)} row(s) at {result['updates']['updatedRange']}."
+
+
+def sheets_update(spreadsheet_id, range, rows):
+    """Overwrite a range with new values, and report what was there before so a mistake can be undone."""
+    sheet_id = fmt.doc_id_from(spreadsheet_id)
+    before = _service("sheets", "v4").spreadsheets().values().get(spreadsheetId=sheet_id, range=range).execute()
+    updated = _write(sheet_id, range, rows)
+    return (f"Updated {updated['updatedRange']} ({updated.get('updatedCells', 0)} cells).\n"
+            f"Previous values (to undo, write these back):\n{json.dumps(before.get('values', []))}")
+
+
+def _write(sheet_id, range, rows):
+    return _service("sheets", "v4").spreadsheets().values().update(
+        spreadsheetId=sheet_id, range=range, valueInputOption="RAW", body={"values": rows}).execute()
