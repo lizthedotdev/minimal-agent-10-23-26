@@ -85,6 +85,7 @@ Access is read-only (see the scopes in `google_workspace.py`). `credentials.json
 | `tools.py` | The tools the model can call (`get_time`, `save_memory`, `search_memory`, and the read-only Google tools `gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read` and `sheets_read`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
 | `memory.py` | Long-term memory: notes stored in a SQLite file (`memory.db`, or set `MEMORY_DB`) and searched with SQLite's built-in full-text search. Delete the file to forget everything. |
 | `google_workspace.py` | Read-only access to Gmail, Calendar, Drive, Docs and Sheets. Handles the Google sign-in and saves the token to `token.json`. |
+| `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 
 One turn of the conversation goes like this:
 
