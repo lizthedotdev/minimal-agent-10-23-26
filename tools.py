@@ -5,6 +5,8 @@ import json
 import google_workspace as google
 import guard
 import memory
+import public_videos
+import recordings
 import web
 
 
@@ -18,7 +20,7 @@ def get_time():
 
 UNTRUSTED = {  # tools whose results contain text other people wrote; screened for prompt injection first
     "gmail_search", "gmail_read", "calendar_events", "drive_search", "docs_read", "sheets_read",
-    "web_search", "web_read", "search_memory",  # memory too: an injection saved once would come back every time
+    "web_search", "web_read", "search_memory", "recording_transcript", "public_videos_search",  # memory too: an injection saved once would come back every time
 }
 
 TOOLS = {  # name -> python function
@@ -31,6 +33,8 @@ TOOLS = {  # name -> python function
     "sheets_create": google.sheets_create, "sheets_add_tab": google.sheets_add_tab,
     "sheets_append": google.sheets_append, "sheets_update": google.sheets_update,
     "web_search": web.web_search, "web_read": web.web_read,
+    "recording_transcript": recordings.recording_transcript, "clips_save": recordings.clips_save,
+    "public_videos_search": public_videos.public_videos_search,
 }
 
 SCHEMAS = [  # what the model is told about each tool (OpenAI-style function schemas)
@@ -177,6 +181,37 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
         "name": "web_read",
         "description": "Read the main text of a web page by url.",
         "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+    }},
+    {"type": "function", "function": {
+        "name": "recording_transcript",
+        "description": "Read a class or meeting recording's timestamped transcript (from its Gemini notes) and chat log.",
+        "parameters": {"type": "object", "properties": {"video_id": {"type": "string"}}, "required": ["video_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "clips_save",
+        "description": "Cut clips from a recording, upload them to the Clips folder and log them in the Clips sheet. "
+                       "Pass every clip for a recording in one call. Max 180 seconds per clip.",
+        "parameters": {"type": "object", "properties": {
+            "video_id": {"type": "string"},
+            "clips": {"type": "array", "items": {"type": "object", "properties": {
+                "start": {"type": "string", "description": "HH:MM:SS from the transcript."},
+                "end": {"type": "string", "description": "HH:MM:SS."},
+                "category": {"type": "string", "enum": ["funny", "teaching", "student", "quote", "demo", "other"]},
+                "title": {"type": "string", "description": "Short title, used in the file name."},
+                "why": {"type": "string", "description": "One line on why it's worth clipping."},
+                "quote": {"type": "string", "description": "The key line, verbatim from the transcript."},
+            }, "required": ["start", "end", "category", "title", "why"]}},
+        }, "required": ["video_id", "clips"]},
+    }},
+    {"type": "function", "function": {
+        "name": "public_videos_search",
+        "description": "Search what the user has already said in their published videos (semantic: finds the same "
+                       "point in different words). Describe the point, not just keywords. Similarity 0.65+ means "
+                       "they've very likely made this point publicly; 0.58-0.65 is related.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "description": "Default 5."},
+        }, "required": ["query"]},
     }},
 ]
 

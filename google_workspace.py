@@ -8,6 +8,7 @@ browser to sign in; the token is then cached in token.json.
 import base64
 import json
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 
 import google_format as fmt
@@ -23,12 +24,18 @@ SCOPES = [  # read-only except Sheets: the agent can't send email, edit events o
     "https://www.googleapis.com/auth/spreadsheets",  # read AND write any sheet the user can access
 ]
 
-_services = {}  # (name, version) -> API client, built once per run
+_services = {}  # (name, version, thread) -> API client: Google's clients aren't thread-safe, so one per thread
+_creds = None  # the signed-in user's credentials, shared by every client
 
 
 def _service(name, version):
     """Sign in (first call only) and return a Google API client."""
-    if (name, version) not in _services:
+    global _creds
+    key = (name, version, threading.get_ident())
+    if key not in _services and _creds is not None:  # already signed in: just build this thread's client
+        from googleapiclient.discovery import build
+        _services[key] = build(name, version, credentials=_creds)
+    if key not in _services:
         from google.auth.transport.requests import Request  # imported here so the agent starts without Google set up
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -46,8 +53,18 @@ def _service(name, version):
             creds = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES).run_local_server(port=0)
         with open(TOKEN, "w") as f:
             f.write(creds.to_json())
-        _services[(name, version)] = build(name, version, credentials=creds)
-    return _services[(name, version)]
+        _creds = creds
+        _services[key] = build(name, version, credentials=creds)
+    return _services[key]
+
+
+def access_token():
+    """A fresh OAuth access token, for calls made outside the API clients (ffmpeg reading a video from Drive)."""
+    from google.auth.transport.requests import Request
+    _service("drive", "v3")  # signs in if needed
+    if not _creds.valid:
+        _creds.refresh(Request())
+    return _creds.token
 
 
 # --- Gmail ---

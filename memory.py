@@ -32,6 +32,7 @@ LAYERS = {  # spreadsheet name -> {tab: column headers}
         "People": ["name", "email", "relationship", "notes", "updated_at"],
         "Projects": ["name", "status", "notes", "updated_at"],
     }),
+    "clips": ("Clips", {"Clips": ["saved_at", "recording", "start", "end", "category", "title", "why", "quote", "link", "public_match"]}),
 }
 SHEET_MIME, FOLDER_MIME = "application/vnd.google-apps.spreadsheet", "application/vnd.google-apps.folder"
 
@@ -42,7 +43,7 @@ def ids():
     """{'folder', 'core', 'recent', 'long_term'} -> Drive ids, creating whatever doesn't exist yet."""
     if not _ids and os.path.exists(IDS_FILE):
         _ids.update(json.load(open(IDS_FILE)))
-    if all(k in _ids for k in ("folder", *LAYERS)):
+    if all(k in _ids for k in ("folder", "clips_folder", *LAYERS)):
         return _ids
     drive = google._service("drive", "v3")
     find = lambda q: drive.files().list(q=q + " and trashed = false", fields="files(id)").execute()["files"]
@@ -50,6 +51,10 @@ def ids():
         found = find(f"name = '{FOLDER_NAME}' and mimeType = '{FOLDER_MIME}' and 'root' in parents")
         _ids["folder"] = found[0]["id"] if found else drive.files().create(
             body={"name": FOLDER_NAME, "mimeType": FOLDER_MIME}, fields="id").execute()["id"]
+    if "clips_folder" not in _ids:  # video clips cut from class recordings (recordings.py)
+        found = find(f"name = 'Clips' and mimeType = '{FOLDER_MIME}' and '{_ids['folder']}' in parents")
+        _ids["clips_folder"] = found[0]["id"] if found else drive.files().create(
+            body={"name": "Clips", "mimeType": FOLDER_MIME, "parents": [_ids["folder"]]}, fields="id").execute()["id"]
     for layer, (name, tabs) in LAYERS.items():
         if layer not in _ids:
             found = find(f"name = '{name}' and mimeType = '{SHEET_MIME}' and '{_ids['folder']}' in parents")
