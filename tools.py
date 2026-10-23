@@ -206,8 +206,8 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     {"type": "function", "function": {
         "name": "public_videos_search",
         "description": "Search what the user has already said in their published videos (semantic: finds the same "
-                       "point in different words). Describe the point, not just keywords. Similarity 0.75+ means "
-                       "they've very likely made this point publicly.",
+                       "point in different words). Describe the point, not just keywords. Similarity 0.65+ means "
+                       "they've very likely made this point publicly; 0.58-0.65 is related.",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "description": "Default 5."},

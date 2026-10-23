@@ -108,8 +108,11 @@ While the agent runs, a background watcher checks your Google Meet recordings fo
 
 1. reads the transcript and chat log (`recording_transcript`),
 2. picks funny moments, good teaching explanations, student breakthroughs, quotable lines and demos,
+   and checks each one against your published videos (`public_videos_search`) to prefer points you haven't made online yet,
 3. cuts each clip with ffmpeg straight from Drive, reading only the part it needs instead of downloading the whole recording (`clips_save`),
-4. uploads the clips to **Agent/Clips** in your Drive and logs each one in the **Clips** sheet (times, category, why, quote, link).
+4. uploads the clips to **Agent/Clips** in your Drive and logs each one in the **Clips** sheet (times, category, why, quote, link, and `public_match`: "new", or the closest public video if you've already said it).
+
+**What you've already said publicly.** The transcripts of your published videos (the `.txt` files in `PUBLIC_VIDEOS_FOLDER`) are split into short passages, embedded with `qwen/qwen3-embedding-8b` (set `EMBED_MODEL` to change it) and kept in a local FAISS index (`public_videos.faiss` + `public_videos.db`, per user, gitignored). The search is semantic, so it finds the same point in different words. Similarity 0.65 or more means you've very likely said it; 0.58–0.65 is related. Those cut-offs come from testing on your archive, where paraphrased repeats scored 0.66–0.76, class-only points 0.52–0.55 and unrelated text under 0.5. The index updates on every watcher check, and embedding the full archive costs well under a cent. You can also just ask the agent "have I talked about X publicly?".
 
 You need `ffmpeg` installed (`brew install ffmpeg` or `apt install ffmpeg`).
 
@@ -128,6 +131,7 @@ You need `ffmpeg` installed (`brew install ffmpeg` or `apt install ffmpeg`).
 | `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 | `web.py` | Web search (`web_search`) and page reading (`web_read`) through [Tavily](https://tavily.com). Set `TAVILY_API_KEY` to turn them on. |
 | `guard.py` | Screens text from email, the web, Docs, Sheets, Calendar and memory for prompt injection before the model sees it. Each chunk is classified by `openai/gpt-oss-safeguard-20b` (set `GUARD_MODEL` to change it); flagged chunks become `[removed: possible prompt injection]`, and chunks that can't be checked are withheld. |
+| `public_videos.py` | Semantic search (FAISS) over the transcripts of your published videos, so the agent knows what you've already said in public. |
 | `recordings.py` | Watches the Meet recordings folder, queues new recordings, and provides the `recording_transcript` and `clips_save` tools. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 

@@ -27,7 +27,8 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "qwen/qwen3-embedding-8b")
 DB_PATH, INDEX_PATH = "public_videos.db", "public_videos.faiss"
 PASSAGE_CHARS = 600  # about 30 seconds of speech: one point, not a whole video
 MIN_WORDS = 8  # skip near-empty transcripts like "Thanks for watching!"
-SAME_POINT = 0.75  # similarity above this: the user has very likely made this point publicly already
+SAME_POINT = 0.65  # at or above: very likely a point already made publicly (paraphrased repeats scored 0.66-0.76)
+RELATED = 0.58  # at or above: related; class-only points scored 0.52-0.55, unrelated text 0.45-0.49
 
 _client = None
 
@@ -149,7 +150,8 @@ def public_videos_search(query, limit=5):
     if not query.strip():
         return "Give some text to search for."
     blocks = [fmt.block(f"[public video] {h['title']}", {
-        "similarity": f"{h['score']:.2f}" + (" (very likely the same point)" if h["score"] >= SAME_POINT else ""),
+        "similarity": f"{h['score']:.2f}" + (" (very likely the same point)" if h["score"] >= SAME_POINT
+                                              else " (related)" if h["score"] >= RELATED else " (different)"),
         "uploaded_to_drive": h["uploaded"],
         "link": h["link"],
         "passage": h["passage"],
