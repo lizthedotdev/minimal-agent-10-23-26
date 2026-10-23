@@ -1,5 +1,5 @@
 # /// script
-# dependencies = ["openai", "google-api-python-client", "google-auth-oauthlib"]
+# dependencies = ["openai", "google-api-python-client", "google-auth-oauthlib", "faiss-cpu", "numpy"]
 # ///
 """The world's most basic agent: read input, call the model, run any tools, repeat."""
 

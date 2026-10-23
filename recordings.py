@@ -21,6 +21,7 @@ from datetime import datetime
 import google_format as fmt
 import google_workspace as google
 import memory
+import public_videos
 
 FOLDER_ID = os.getenv("RECORDINGS_FOLDER", "1K_O7LxhasfI8_AxyNkqtC0naC3xhQAJT")  # Drive > Meet Recordings
 POLL_SECONDS = int(os.getenv("RECORDINGS_POLL_SECONDS", "300"))
@@ -113,6 +114,7 @@ def watch(on_error=print):
     def loop():
         while not stop.is_set():
             try:
+                public_videos.sync()  # pick up newly posted videos first, so clipping compares against them
                 check_once()
             except Exception as e:  # network blips shouldn't kill the watcher
                 on_error(f"(recordings watcher: {type(e).__name__}: {e})")
@@ -132,10 +134,13 @@ video_id: {r['video_id']}
 2. Pick the moments worth clipping for social media and the school's library: genuinely funny moments, great \
 teaching explanations, student breakthroughs or great questions, quotable insights, and impressive demos. \
 Skip logistics, setup, silence and private or sensitive moments (personal details, money, health, anyone upset).
-3. Save them all with one clips_save call. Each clip should stand on its own: start a few seconds before the moment \
+3. Check your best candidates with public_videos_search (describe the point being made). Prefer points the user \
+has NOT already made in a public video; drop a candidate whose point is very likely already public, unless this \
+version is clearly better or funnier.
+4. Save them all with one clips_save call. Each clip should stand on its own: start a few seconds before the moment \
 and end after the payoff, usually 20 to 90 seconds. Aim for 3 to 10 clips, the best first; fewer is fine for a \
 dull recording.
-4. Reply with a short summary: how many clips, and a line on each."""
+5. Reply with a short summary: how many clips, and a line on each, noting which ones are new material."""
 
 
 # --- tools ---
@@ -164,6 +169,18 @@ def _seconds(t):
 
 def _hms(s):
     return f"{int(s) // 3600:02d}:{int(s) % 3600 // 60:02d}:{int(s) % 60:02d}"
+
+
+def _public_match(clip):
+    """The closest public video for a clip, e.g. 'new' or '0.81 Tokens in five levels (link)'."""
+    try:
+        hits = public_videos.closest(f"{clip.get('quote', '')} {clip.get('why', '')}".strip() or clip.get("title", ""))
+    except Exception as e:  # never lose a clip over the comparison
+        return f"not checked: {type(e).__name__}"
+    if not hits or hits[0]["score"] < public_videos.SAME_POINT:
+        return "new" + (f" (closest {hits[0]['score']:.2f}: {hits[0]['title']})" if hits else "")
+    h = hits[0]
+    return f"{h['score']:.2f} already public: {h['title']} {h['link'] or ''}".strip()
 
 
 def clips_save(video_id, clips):
@@ -195,8 +212,11 @@ def clips_save(video_id, clips):
             up = drive.files().create(body={"name": name, "parents": [folder]}, fields="id, webViewLink",
                                       media_body=MediaFileUpload(out, mimetype="video/mp4", resumable=True)).execute()
         rows.append([datetime.now().isoformat(timespec="seconds"), rec["name"], _hms(start), _hms(end),
-                     c.get("category", ""), c.get("title", ""), c.get("why", ""), c.get("quote", ""), up["webViewLink"]])
+                     c.get("category", ""), c.get("title", ""), c.get("why", ""), c.get("quote", ""), up["webViewLink"],
+                     _public_match(c)])
         lines.append(f"saved '{c.get('title')}' {_hms(start)}-{_hms(end)}: {up['webViewLink']}")
     if rows:
-        google.sheets_append(memory.ids()["clips"], "Clips", rows)
+        clips_sheet = memory.ids()["clips"]
+        google._write(clips_sheet, "'Clips'!A1", [memory.LAYERS["clips"][1]["Clips"]])  # header, incl. newer columns
+        google.sheets_append(clips_sheet, "Clips", rows)
     return "\n".join(lines) or "No clips given."

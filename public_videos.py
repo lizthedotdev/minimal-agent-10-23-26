@@ -94,10 +94,8 @@ def sync():
         if not new:
             return 0
 
-        def fetch(f):  # each worker builds its own client: Google's clients aren't safe to share across threads
-            from googleapiclient.discovery import build
-            local = build("drive", "v3", credentials=google._creds)
-            return f, local.files().get_media(fileId=f["id"]).execute().decode("utf-8", "replace")
+        def fetch(f):  # _service gives each worker thread its own client
+            return f, google._service("drive", "v3").files().get_media(fileId=f["id"]).execute().decode("utf-8", "replace")
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             fetched = list(pool.map(fetch, new))
@@ -105,7 +103,8 @@ def sync():
         rows = []  # (passage id, file_id, text)
         for f, text in fetched:
             if len(text.split()) >= MIN_WORDS:
-                rows += [(start + len(rows), f["id"], p) for p in _passages(text)]
+                for p in _passages(text):
+                    rows.append((start + len(rows), f["id"], p))
         index = _index()
         if rows:
             vectors = _embed([r[2] for r in rows])
@@ -121,35 +120,38 @@ def sync():
     return len(new)
 
 
-def public_videos_search(query, limit=5):
-    """The user's published videos that make the closest point to `query`, best first."""
-    if not query.strip():
-        return "Give some text to search for."
+def closest(query, limit=5):
+    """[{'score', 'title', 'uploaded', 'link', 'passage'}] for the public videos closest to `query`, best first."""
     index = _index()
     if index is None:
         sync()
         index = _index()
     if index is None:
-        return "No public video transcripts are indexed."
+        return []
     scores, ids = index.search(_embed([query]), limit * 4)  # several passages may come from one video
-    best = {}  # file_id -> (score, passage)
+    best = {}  # file_id -> (score, passage), first hit per video is its best
     with closing(_db()) as db:
         for score, pid in zip(scores[0], ids[0]):
-            if pid < 0:
-                continue
-            file_id, text = db.execute("SELECT file_id, text FROM passages WHERE id = ?", (int(pid),)).fetchone()
-            if file_id not in best:
-                best[file_id] = (float(score), text)
-        meta = {r[0]: r[1:] for r in db.execute(
-            f"SELECT file_id, title, uploaded, video_id FROM transcripts WHERE file_id IN ({','.join('?' * len(best))})",
-            list(best))} if best else {}
-    blocks = []
-    for file_id, (score, text) in list(best.items())[:limit]:
-        title, uploaded, vid = meta[file_id]
-        blocks.append(fmt.block(f"[public video] {title or '(untitled)'}", {
-            "similarity": f"{score:.2f}" + (" (very likely the same point)" if score >= SAME_POINT else ""),
-            "uploaded_to_drive": uploaded,
-            "link": f"https://drive.google.com/file/d/{vid}/view" if vid else None,
-            "passage": text,
-        }))
-    return fmt.results("closest public videos", blocks, None, "")
+            if pid >= 0:
+                file_id, text = db.execute("SELECT file_id, text FROM passages WHERE id = ?", (int(pid),)).fetchone()
+                best.setdefault(file_id, (float(score), text))
+        hits = []
+        for file_id, (score, text) in list(best.items())[:limit]:
+            title, uploaded, vid = db.execute(
+                "SELECT title, uploaded, video_id FROM transcripts WHERE file_id = ?", (file_id,)).fetchone()
+            hits.append({"score": score, "title": title or "(untitled)", "uploaded": uploaded, "passage": text,
+                         "link": f"https://drive.google.com/file/d/{vid}/view" if vid else None})
+    return hits
+
+
+def public_videos_search(query, limit=5):
+    """The user's published videos that make the closest point to `query`, best first."""
+    if not query.strip():
+        return "Give some text to search for."
+    blocks = [fmt.block(f"[public video] {h['title']}", {
+        "similarity": f"{h['score']:.2f}" + (" (very likely the same point)" if h["score"] >= SAME_POINT else ""),
+        "uploaded_to_drive": h["uploaded"],
+        "link": h["link"],
+        "passage": h["passage"],
+    }) for h in closest(query, limit)]
+    return fmt.results("closest public videos", blocks, None, "No public video transcripts are indexed.")
