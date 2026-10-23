@@ -61,36 +61,39 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "gmail_read",
-        "description": "Read the full text of one email, by the id from gmail_search.",
+        "description": "Read one email by the message_id from gmail_search. Quoted earlier replies are removed.",
         "parameters": {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]},
     }},
     {"type": "function", "function": {
         "name": "calendar_events",
-        "description": "List events on the user's primary Google Calendar. Defaults to the next 7 days.",
+        "description": "List or search events across the user's Google Calendars. With no dates, shows the next 7 days; "
+                       "with a query and no dates, searches the past year and next 6 months. The query matches "
+                       "title, description, location and attendee names/emails, so search by a person or a key word.",
         "parameters": {"type": "object", "properties": {
             "start": {"type": "string", "description": "ISO date or datetime, e.g. 2026-10-23 or 2026-10-23T09:00."},
             "end": {"type": "string", "description": "ISO date or datetime."},
-            "query": {"type": "string", "description": "Only events whose text contains these words."},
+            "query": {"type": "string", "description": "Only events whose text contains these words, e.g. 'Sam'."},
             "max_results": {"type": "integer", "description": "Default 25."},
         }},
     }},
     {"type": "function", "function": {
         "name": "drive_search",
-        "description": "Find Google Drive files (Docs, Sheets, others) by words in their name or contents. "
-                       "Returns file ids to pass to docs_read or sheets_read.",
+        "description": "Find Google Drive files (including shared drives) by words in their name or contents. "
+                       "Use a few distinctive words, not a sentence. Returns file ids to pass to docs_read or sheets_read.",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string"},
+            "kind": {"type": "string", "enum": ["doc", "sheet", "slides", "folder", "pdf"]},
             "max_results": {"type": "integer", "description": "Default 10."},
         }, "required": ["query"]},
     }},
     {"type": "function", "function": {
         "name": "docs_read",
-        "description": "Read the text of a Google Doc, by the id from drive_search or from its URL.",
+        "description": "Read a Google Doc as markdown. Pass the file_id from drive_search, or the doc's URL.",
         "parameters": {"type": "object", "properties": {"document_id": {"type": "string"}}, "required": ["document_id"]},
     }},
     {"type": "function", "function": {
         "name": "sheets_read",
-        "description": "Read cell values from a Google Sheet, by the id from drive_search or from its URL. "
+        "description": "Read a Google Sheet as a markdown table. Pass the file_id from drive_search, or the sheet's URL. "
                        "Without a range, lists the tabs and reads the first one.",
         "parameters": {"type": "object", "properties": {
             "spreadsheet_id": {"type": "string"},
