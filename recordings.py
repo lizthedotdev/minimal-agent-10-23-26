@@ -13,6 +13,7 @@ import json
 import os
 import queue
 import re
+import statistics
 import subprocess
 import tempfile
 import threading
@@ -27,6 +28,8 @@ FOLDER_ID = os.getenv("RECORDINGS_FOLDER", "1K_O7LxhasfI8_AxyNkqtC0naC3xhQAJT") 
 POLL_SECONDS = int(os.getenv("RECORDINGS_POLL_SECONDS", "300"))
 STATE_FILE = "recordings_state.json"
 MAX_CLIP_SECONDS = 180
+SPEAKER = os.getenv("USER_SPEAKER", "Liz Howard")  # the user's name as it appears in Meet transcripts
+FAST_WPM = 160  # the user's published videos run at a median 163 wpm vs 144 wpm when leading class
 
 events = queue.Queue()  # recordings waiting to be clipped, filled by the watcher thread or /clip
 _lock = threading.Lock()  # guards the state file between the watcher and the worker
@@ -131,8 +134,11 @@ def task_prompt(r):
 video_id: {r['video_id']}
 
 1. Read the transcript with recording_transcript(video_id).
-2. Pick the moments worth clipping for social media and the school's library: genuinely funny moments, great \
-teaching explanations, student breakthroughs or great questions, quotable insights, and impressive demos. \
+2. Pick the moments worth clipping for social media and the school's library. Top priority: profound mini-lectures \
+and tight explanations, where {SPEAKER} explains an idea clearly, densely and with conviction (category "lecture"). \
+Each transcript minute is marked with {SPEAKER}'s speaking pace; their best material runs fast, so prefer minutes \
+marked FAST, and only take a slow stretch when it's exceptionally funny or moving. Then: genuinely funny moments, \
+student breakthroughs or great questions, quotable insights, and impressive demos. \
 Skip logistics, setup, silence and private or sensitive moments (personal details, money, health, anyone upset).
 3. Check your best candidates with public_videos_search (describe the point being made). Prefer points the user \
 has NOT already made in a public video; drop a candidate whose point is very likely already public, unless this \
@@ -154,11 +160,49 @@ def recording_transcript(video_id):
     tab = next((t for t in doc.get("tabs", []) if t["tabProperties"].get("title") == "Transcript"), None)
     if not tab:
         return f"The notes doc for {rec['name']} has no Transcript tab."
-    text = fmt.doc_to_markdown(tab["documentTab"])
+    text = _with_pace(fmt.doc_to_markdown(tab["documentTab"]))
     if rec["chat_id"]:
         chat = google._service("drive", "v3").files().get_media(fileId=rec["chat_id"]).execute().decode("utf-8", "replace")
         text += "\n\n# Chat (start,end timestamps)\n\n" + chat
     return fmt.cut(text, 400_000)  # a full day's class is ~180k chars; Qwen's context fits it
+
+
+def _pace(text):
+    """[(start_s, end_s, words per minute, share of words that are SPEAKER's)] for each transcript minute."""
+    parts = re.split(r"^#### (\d\d:\d\d:\d\d)[^\n]*$", text, flags=re.M)  # also matches labelled headers
+    out = []
+    for i in range(1, len(parts) - 2, 2):
+        start, end = _seconds(parts[i]), _seconds(parts[i + 2])
+        said = [line.split(":", 1) for line in parts[i + 1].splitlines() if ":" in line]
+        total = sum(len(words.split()) for _, words in said)
+        mine = sum(len(words.split()) for who, words in said if who.strip() == SPEAKER)
+        if end > start and total:
+            out.append((start, end, total * 60 / (end - start), mine / total))
+    return out
+
+
+def _with_pace(text):
+    """Label each transcript minute with the speaking pace, so the model can favor fast, dense stretches."""
+    pace = {start: (wpm, share) for start, _, wpm, share in _pace(text)}  # the last minute has no end time, so no label
+    led = [wpm for wpm, share in pace.values() if share >= 0.8]
+    median = statistics.median(led) if led else 0
+
+    def label(m):
+        wpm, share = pace.get(_seconds(m.group(1)), (0, 0))
+        if not wpm:
+            return m.group(0)
+        tag = " FAST" if share >= 0.8 and wpm >= max(FAST_WPM, median) else " slow" if share >= 0.8 and wpm < 0.8 * median else ""
+        return f"{m.group(0)}  [{wpm:.0f} wpm, {SPEAKER} {share:.0%} of words{tag}]"
+
+    head = f"(Pace: {SPEAKER}'s median this class is {median:.0f} wpm; FAST = at least {max(FAST_WPM, median):.0f} wpm while leading.)\n\n"
+    return head + re.sub(r"^#### (\d\d:\d\d:\d\d)", label, text, flags=re.M)
+
+
+def _clip_pace(transcript_text, start, end):
+    """Average words per minute over the transcript minutes a clip overlaps."""
+    spans = [(a, b, w) for a, b, w, _ in _pace(transcript_text) if a < end and b > start]
+    return round(sum(w * (min(b, end) - max(a, start)) for a, b, w in spans) /
+                 sum(min(b, end) - max(a, start) for a, b, _ in spans)) if spans else ""
 
 
 def _seconds(t):
@@ -188,6 +232,7 @@ def clips_save(video_id, clips):
     from googleapiclient.http import MediaFileUpload
 
     rec = next((r for r in _listing() if r["video_id"] == video_id), {"name": video_id, "seconds": 0})
+    transcript = recording_transcript(video_id)  # for each clip's speaking pace
     folder = memory.ids()["clips_folder"]
     drive = google._service("drive", "v3")
     lines, rows = [], []
@@ -213,7 +258,7 @@ def clips_save(video_id, clips):
                                       media_body=MediaFileUpload(out, mimetype="video/mp4", resumable=True)).execute()
         rows.append([datetime.now().isoformat(timespec="seconds"), rec["name"], _hms(start), _hms(end),
                      c.get("category", ""), c.get("title", ""), c.get("why", ""), c.get("quote", ""), up["webViewLink"],
-                     _public_match(c)])
+                     _public_match(c), _clip_pace(transcript, start, end)])
         lines.append(f"saved '{c.get('title')}' {_hms(start)}-{_hms(end)}: {up['webViewLink']}")
     if rows:
         clips_sheet = memory.ids()["clips"]

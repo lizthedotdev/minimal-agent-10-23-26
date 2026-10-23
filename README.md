@@ -107,10 +107,10 @@ You can open any of them in the browser to see or correct what the agent remembe
 While the agent runs, a background watcher checks your Google Meet recordings folder every 5 minutes. When a new recording appears and its "Notes by Gemini" doc (which holds the timestamped transcript) is ready, the agent clips it in the background, in its own conversation, waiting while you're mid-question. It:
 
 1. reads the transcript and chat log (`recording_transcript`),
-2. picks funny moments, good teaching explanations, student breakthroughs, quotable lines and demos,
+2. picks moments, top priority first: profound mini-lectures and tight explanations, then funny moments, student breakthroughs, quotable lines and demos. Every transcript minute is labelled with your speaking pace, and the agent favors fast stretches (your published videos run at a median 163 wpm versus 144 wpm when leading class). Set `USER_SPEAKER` if your name in Meet transcripts isn't "Liz Howard".
    and checks each one against your published videos (`public_videos_search`) to prefer points you haven't made online yet,
 3. cuts each clip with ffmpeg straight from Drive, reading only the part it needs instead of downloading the whole recording (`clips_save`),
-4. uploads the clips to **Agent/Clips** in your Drive and logs each one in the **Clips** sheet (times, category, why, quote, link, and `public_match`: "new", or the closest public video if you've already said it).
+4. uploads the clips to **Agent/Clips** in your Drive and logs each one in the **Clips** sheet (times, category, why, quote, link, and `public_match`: "new", or the closest public video if you've already said it; `pace_wpm`).
 
 **What you've already said publicly.** The transcripts of your published videos (the `.txt` files in `PUBLIC_VIDEOS_FOLDER`) are split into short passages, embedded with `qwen/qwen3-embedding-8b` (set `EMBED_MODEL` to change it) and kept in a local FAISS index (`public_videos.faiss` + `public_videos.db`, per user, gitignored). The search is semantic, so it finds the same point in different words. Similarity 0.65 or more means you've very likely said it; 0.58–0.65 is related. Those cut-offs come from testing on your archive, where paraphrased repeats scored 0.66–0.76, class-only points 0.52–0.55 and unrelated text under 0.5. The index updates on every watcher check, and embedding the full archive costs well under a cent. You can also just ask the agent "have I talked about X publicly?".
 
