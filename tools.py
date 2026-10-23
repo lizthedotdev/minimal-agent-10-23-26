@@ -134,7 +134,7 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "sheets_add_tab",
-        "description": "Add a tab to a Google Sheet, optionally with column headers.",
+        "description": "Add a tab to a Google Sheet you may edit (see sheets_update), optionally with column headers.",
         "parameters": {"type": "object", "properties": {
             "spreadsheet_id": {"type": "string"},
             "tab": {"type": "string"},
@@ -143,7 +143,8 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "sheets_append",
-        "description": "Add rows to the end of a tab. Each row is a list of cell values in column order.",
+        "description": "Add rows to the end of a tab in a sheet you may edit (see sheets_update). Each row is a list of "
+                       "cell values in column order.",
         "parameters": {"type": "object", "properties": {
             "spreadsheet_id": {"type": "string"},
             "tab": {"type": "string"},
@@ -152,8 +153,9 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "sheets_update",
-        "description": "Overwrite cells in a Google Sheet. This changes the user's data: read the range first, and "
-                       "only edit sheets the user asked you to or your own memory spreadsheet. Returns the old values.",
+        "description": "Overwrite cells in a Google Sheet. You may only edit your memory sheets, sheets you "
+                       "created with sheets_create, and sheets the user has put on their allow list; anything else is "
+                       "refused. Read the range first. Returns the old values.",
         "parameters": {"type": "object", "properties": {
             "spreadsheet_id": {"type": "string"},
             "range": {"type": "string", "description": "A1 notation, e.g. 'People!A5:C5'."},

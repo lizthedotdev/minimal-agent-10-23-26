@@ -206,6 +206,43 @@ def sheets_read(spreadsheet_id, range=None):
 # --- Sheets: writing ---
 # Values are written RAW: text that looks like a formula (e.g. "=IMPORTXML(...)" copied from an email) stays text,
 # so content the agent reads can't turn into formulas that run in the user's spreadsheet.
+#
+# The agent may only write to sheets it created (its memory sheets and anything from sheets_create) and sheets the
+# user lists in the allow list file. Both lists are local, per-user files, kept out of git.
+
+CREATED_FILE = "agent_sheets.txt"  # ids of sheets the agent created with sheets_create; maintained automatically
+MEMORY_FILE = "agent_memory.json"  # memory.py's folder and sheet ids
+ALLOWLIST = os.getenv("SHEETS_ALLOWLIST", "sheets_allowlist.txt")  # the user's own sheets the agent may edit
+ALLOWLIST_TEMPLATE = """# Google Sheets the agent may edit, besides the ones it created itself.
+# One sheet per line: its id or its full URL. Lines starting with # are ignored.
+# Example:
+# https://docs.google.com/spreadsheets/d/1AbC.../edit
+"""
+
+
+def _ids_in(path):
+    if not os.path.exists(path):
+        return set()
+    return {fmt.doc_id_from(line) for line in open(path).read().splitlines() if line.strip() and not line.startswith("#")}
+
+
+def _writable():
+    """Ids of every sheet the agent may write to, read fresh each time so edits to the allow list apply at once."""
+    if not os.path.exists(ALLOWLIST):
+        with open(ALLOWLIST, "w") as f:  # give the user a file to fill in
+            f.write(ALLOWLIST_TEMPLATE)
+    memory_ids = set(json.load(open(MEMORY_FILE)).values()) if os.path.exists(MEMORY_FILE) else set()
+    return memory_ids | _ids_in(CREATED_FILE) | _ids_in(ALLOWLIST)
+
+
+def _check_writable(spreadsheet_id):
+    """Return the sheet id if the agent may write to it, else raise with a message the model can relay."""
+    sheet_id = fmt.doc_id_from(spreadsheet_id)
+    if sheet_id not in _writable():
+        raise PermissionError(f"not allowed to edit sheet {sheet_id}: you didn't create it and the user hasn't added it "
+                              f"to {ALLOWLIST}. Don't retry; tell the user, who can add the sheet's URL to that file.")
+    return sheet_id
+
 
 def sheets_create(title, tabs=None):
     """Create a spreadsheet. `tabs` maps tab name -> list of column headers."""
@@ -214,6 +251,8 @@ def sheets_create(title, tabs=None):
         "properties": {"title": title},
         "sheets": [{"properties": {"title": name}} for name in tabs],
     }, fields="spreadsheetId,spreadsheetUrl").execute()
+    with open(CREATED_FILE, "a") as f:  # remember it as the agent's own, so it can edit it later
+        f.write(sheet["spreadsheetId"] + "\n")
     for name, headers in tabs.items():
         if headers:
             _write(sheet["spreadsheetId"], f"'{name}'!A1", [headers])
@@ -223,7 +262,7 @@ def sheets_create(title, tabs=None):
 
 def sheets_add_tab(spreadsheet_id, tab, headers=None):
     """Add a tab to an existing spreadsheet, optionally with a header row."""
-    sheet_id = fmt.doc_id_from(spreadsheet_id)
+    sheet_id = _check_writable(spreadsheet_id)
     _service("sheets", "v4").spreadsheets().batchUpdate(
         spreadsheetId=sheet_id, body={"requests": [{"addSheet": {"properties": {"title": tab}}}]}).execute()
     if headers:
@@ -234,14 +273,14 @@ def sheets_add_tab(spreadsheet_id, tab, headers=None):
 def sheets_append(spreadsheet_id, tab, rows):
     """Add rows after the last row of a tab."""
     result = _service("sheets", "v4").spreadsheets().values().append(
-        spreadsheetId=fmt.doc_id_from(spreadsheet_id), range=f"'{tab}'", valueInputOption="RAW",
+        spreadsheetId=_check_writable(spreadsheet_id), range=f"'{tab}'", valueInputOption="RAW",
         insertDataOption="INSERT_ROWS", body={"values": rows}).execute()
     return f"Appended {len(rows)} row(s) at {result['updates']['updatedRange']}."
 
 
 def sheets_update(spreadsheet_id, range, rows):
     """Overwrite a range with new values, and report what was there before so a mistake can be undone."""
-    sheet_id = fmt.doc_id_from(spreadsheet_id)
+    sheet_id = _check_writable(spreadsheet_id)
     before = _service("sheets", "v4").spreadsheets().values().get(spreadsheetId=sheet_id, range=range).execute()
     updated = _write(sheet_id, range, rows)
     return (f"Updated {updated['updatedRange']} ({updated.get('updatedCells', 0)} cells).\n"
