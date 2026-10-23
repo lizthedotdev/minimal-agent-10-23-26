@@ -7,6 +7,7 @@ import os
 
 from openai import OpenAI, OpenAIError
 
+import memory
 from prompt import build_messages
 from tools import SCHEMAS, run_tool_call
 
@@ -37,6 +38,12 @@ def respond(history, user_input):
 def main():
     """Chat loop in the terminal."""
     history = []  # short-term memory: just the transcript
+    try:
+        moved = memory.consolidate()  # recent notes older than RECENT_DAYS move to long-term memory
+        if moved:
+            print(f"(moved {moved} old note(s) from recent to long-term memory)")
+    except Exception as e:
+        print(f"(memory upkeep skipped: {type(e).__name__}: {e})")
     while True:
         user_input = input("you> ")
         if user_input in ("", "quit", "exit"):

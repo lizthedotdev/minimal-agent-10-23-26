@@ -18,6 +18,7 @@ SCOPES = [  # read-only except Sheets: the agent can't send email, edit events o
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive.file",  # create files and folders; edit only the ones it created
     "https://www.googleapis.com/auth/documents.readonly",
     "https://www.googleapis.com/auth/spreadsheets",  # read AND write any sheet the user can access
 ]

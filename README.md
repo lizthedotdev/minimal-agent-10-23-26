@@ -76,16 +76,24 @@ The agent can read your Gmail, Calendar, Drive and Docs, and read **and write** 
 
 Access is read-only except for Sheets, which the agent can edit: any sheet you can edit, not just its own (see the scopes in `google_workspace.py`). It writes values as plain text, so a formula copied from an email can't run, and `sheets_update` returns the old values so a bad edit can be undone. If the scopes change, the agent asks you to sign in again. `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
 
-**Memory spreadsheet.** On first use the agent creates a spreadsheet called "Agent Memory" in your Drive and saves its id in `agent_sheet.txt`. Notes go on its **Notes** tab, and the agent can add its own tabs (for example People or Follow-ups). Open it in the browser to see or correct what it remembers. Set `AGENT_SHEET_ID` to use an existing spreadsheet instead.
+**Memory.** On first use the agent creates a folder called **Agent** in your Drive (set `AGENT_FOLDER` to rename it) with three spreadsheets, one per layer of memory:
+
+| Spreadsheet | What goes in it | In the system prompt? |
+|---|---|---|
+| **Core Memory** | A few key facts (who you are, how you like to work), one row per `key`. Capped at 4,000 characters. | Always |
+| **Recent Memory** | A dated log of notes from `save_memory`. Notes older than 14 days move to Long-term when the agent starts. | The latest 15 |
+| **Long-term Memory** | Older notes (**Notes** tab) plus structured records: **People**, **Projects**, and any tabs the agent adds. | No; the agent uses `search_memory` |
+
+You can open any of them in the browser to see or correct what the agent remembers; edits show up on the next message. Their ids are cached in `agent_memory.json`. If you delete that file, the agent finds the folder again by name. The agent creates these files with the `drive.file` scope, which lets it create and edit only files it made itself.
 
 ## How it works
 
 | File | What it does |
 |---|---|
 | `agent.py` | The main loop. It reads your input, calls the model, runs any tools the model asks for, and prints the answer. |
-| `prompt.py` | Builds the list of messages the model sees: the system prompt, the conversation so far, and your new message. |
-| `tools.py` | The tools the model can call: `get_time`; memory (`save_memory`, `search_memory`, `memory_overview`); Google reads (`gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read`, `sheets_read`); and Sheets writes (`sheets_create`, `sheets_add_tab`, `sheets_append`, `sheets_update`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
-| `memory.py` | Long-term memory in the agent's own "Agent Memory" spreadsheet. Search looks for your words across every tab. |
+| `prompt.py` | Builds the list of messages the model sees: the system prompt (with core memory and recent notes), the conversation so far, and your new message. |
+| `tools.py` | The tools the model can call: `get_time`; memory (`save_memory`, `search_memory`, `core_memory_set`, `core_memory_remove`, `memory_overview`); Google reads (`gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read`, `sheets_read`); and Sheets writes (`sheets_create`, `sheets_add_tab`, `sheets_append`, `sheets_update`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
+| `memory.py` | The agent's three layers of memory (core, recent, long-term), each a Google Sheet in its Drive folder. Puts core memory and recent notes into the prompt, and moves old notes to long-term. |
 | `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 

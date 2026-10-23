@@ -16,7 +16,8 @@ def get_time():
 
 TOOLS = {  # name -> python function
     "get_time": get_time,
-    "save_memory": memory.save, "search_memory": memory.search, "memory_overview": memory.overview,
+    "save_memory": memory.save_memory, "search_memory": memory.search_memory, "memory_overview": memory.memory_overview,
+    "core_memory_set": memory.core_memory_set, "core_memory_remove": memory.core_memory_remove,
     "gmail_search": google.gmail_search, "gmail_read": google.gmail_read,
     "calendar_events": google.calendar_events, "drive_search": google.drive_search,
     "docs_read": google.docs_read, "sheets_read": google.sheets_read,
@@ -32,17 +33,30 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "save_memory",
-        "description": "Save a note to the Notes tab of your memory spreadsheet so it can be recalled in later "
-                       "conversations. Save self-contained statements, e.g. \"The user's name is Sam.\" For structured "
-                       "records (people, projects, follow-ups), keep your own tab instead: see memory_overview.",
+        "description": "Save a note to recent memory. Write self-contained statements with names and dates, e.g. "
+                       "\"2026-10-23: Sam agreed to send the Q4 budget by Friday.\"",
         "parameters": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]},
     }},
     {"type": "function", "function": {
         "name": "search_memory",
-        "description": "Search every tab of your memory spreadsheet by keywords. Use it before answering questions "
-                       "about the user or anything that may have come up in a past conversation. Results show each "
-                       "row's location (e.g. Notes!A5) so you can correct it with sheets_update.",
+        "description": "Search recent and long-term memory (every tab) by keywords. Use it before saying you don't "
+                       "know something about the user, a person or a project. Results show each row's location "
+                       "so you can correct it with sheets_update.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "core_memory_set",
+        "description": "Add or replace a core fact, which is shown in every conversation. Only for things that "
+                       "matter almost every time; core memory has a size limit.",
+        "parameters": {"type": "object", "properties": {
+            "key": {"type": "string", "description": "Short label, e.g. 'user_name' or 'company'."},
+            "fact": {"type": "string"},
+        }, "required": ["key", "fact"]},
+    }},
+    {"type": "function", "function": {
+        "name": "core_memory_remove",
+        "description": "Delete a core fact by its key.",
+        "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
     }},
     {"type": "function", "function": {
         "name": "gmail_search",
@@ -96,9 +110,8 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "memory_overview",
-        "description": "Show your memory spreadsheet's file_id and its tabs with their columns and row counts. "
-                       "Your memory is yours to organise: add tabs (sheets_add_tab) for things worth tracking as "
-                       "rows, add to them (sheets_append), and fix rows that are out of date (sheets_update).",
+        "description": "List your memory spreadsheets (core, recent, long-term) with their file_ids, tabs and "
+                       "columns. Use the file_ids with sheets_append, sheets_update and sheets_add_tab.",
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
