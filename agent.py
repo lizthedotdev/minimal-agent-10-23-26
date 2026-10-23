@@ -5,7 +5,7 @@
 
 import os
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 from prompt import build_messages
 from tools import SCHEMAS, run_tool_call
@@ -14,19 +14,24 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",  # OpenRouter speaks the OpenAI API
     api_key=os.environ["OPENROUTER_API_KEY"],  # get one at https://openrouter.ai/keys
 )
-MODEL = os.getenv("MODEL", "anthropic/claude-sonnet-5.5")  # any model slug from https://openrouter.ai/models
+MODEL = os.getenv("MODEL", "qwen/qwen3.8-27b")  # any model slug from https://openrouter.ai/models
+MAX_TURNS = 10  # most model calls per user message, so a model stuck calling tools can't run forever
 
 
 def respond(history, user_input):
     """Answer one user message, looping while the model asks for tools."""
     messages = build_messages(history, user_input)  # prompt.py decides what the model sees
-    while True:
-        reply = client.chat.completions.create(model=MODEL, messages=messages, tools=SCHEMAS).choices[0].message
+    for _ in range(MAX_TURNS):
+        completion = client.chat.completions.create(model=MODEL, messages=messages, tools=SCHEMAS)
+        if not completion.choices:  # OpenRouter can report provider errors inside a 200 response
+            raise RuntimeError(f"model returned no reply: {getattr(completion, 'error', completion)}")
+        reply = completion.choices[0].message
         messages.append(reply)  # keep the model's turn, including any tool requests
         if not reply.tool_calls:  # no tools requested: this is the final answer
-            return reply.content
+            return (reply.content or "").strip()  # some models pad replies with blank lines
         for call in reply.tool_calls:  # run each tool the model asked for
             messages.append(run_tool_call(call))  # tools.py does the work; result goes back to the model
+    return f"(Stopped after {MAX_TURNS} model calls without a final answer.)"
 
 
 def main():
@@ -36,10 +41,13 @@ def main():
         user_input = input("you> ")
         if user_input in ("", "quit", "exit"):
             break
-        answer = respond(history, user_input)
+        try:
+            answer = respond(history, user_input)
+        except (OpenAIError, RuntimeError) as e:  # network, auth, rate limit, bad model ID, provider error, ...
+            print(f"error> {type(e).__name__}: {e}")
+            continue  # leave history unchanged so you can just try again
         print("agent>", answer)
         history += [{"role": "user", "content": user_input}, {"role": "assistant", "content": answer}]
-        # MEMORY HOOK 4: write. Save this exchange to long-term memory here (embed + store)
 
 
 if __name__ == "__main__":
