@@ -117,6 +117,8 @@ def calendar_events(start=None, end=None, query=None, max_results=25):
         items = cal.events().list(calendarId=c["id"], timeMin=start_dt.isoformat(), timeMax=end_dt.isoformat(), q=query,
                                   maxResults=max_results, singleEvents=True, orderBy="startTime").execute().get("items", [])
         events += [(e, c.get("summaryOverride") or c.get("summary", c["id"])) for e in items if e.get("status") != "cancelled"]
+    seen = set()  # an event shared to several calendars comes back once per calendar
+    events = [ec for ec in events if not (ec[0]["id"] in seen or seen.add(ec[0]["id"]))]
     events.sort(key=lambda ec: ec[0]["start"].get("dateTime") or ec[0]["start"].get("date"))
     shown = events[:max_results]
     blocks = [_event(e, name if len(calendars) > 1 else None) for e, name in shown]
@@ -136,7 +138,7 @@ def _event(e, calendar_name):
         "calendar": calendar_name,
         "where": e.get("location"),
         "video": e.get("hangoutLink"),
-        "organizer": (e.get("organizer") or {}).get("email"),
+        "organizer": (lambda o: o.get("displayName") or o.get("email"))(e.get("organizer") or {}),
         "attendees": ", ".join(people[:15]) + (f", +{len(people) - 15} more" if len(people) > 15 else ""),
         "description": fmt.cut(fmt.html_to_text(e.get("description", "")), 500),
     })

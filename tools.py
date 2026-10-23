@@ -33,8 +33,8 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
     }},
     {"type": "function", "function": {
         "name": "save_memory",
-        "description": "Save a note to recent memory. Write self-contained statements with names and dates, e.g. "
-                       "\"2026-10-23: Sam agreed to send the Q4 budget by Friday.\"",
+        "description": "Save a note to recent memory (the date is added for you). Write self-contained statements "
+                       "with names, e.g. \"Sam agreed to send the Q4 budget by Friday Oct 30.\"",
         "parameters": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]},
     }},
     {"type": "function", "function": {

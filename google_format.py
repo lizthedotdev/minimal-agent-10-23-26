@@ -132,14 +132,16 @@ def person(header_value):
 
 def md_table(rows, max_rows=MAX_ROWS, numbered=True):
     """Rows of cells -> a markdown table, first row as the header, optionally with the sheet's row numbers."""
-    if not rows:
+    filled = lambda r: [i for i, v in enumerate(r) if str(v).strip()]
+    width = max((filled(r)[-1] + 1 for r in rows if filled(r)), default=0)  # drop trailing empty columns
+    if not width:
         return "(empty)"
-    width = max(len(r) for r in rows)
     cell = lambda v: str(v).replace("|", "\\|").replace("\n", " ")
-    pad = lambda r: [cell(v) for v in r] + [""] * (width - len(r))
+    pad = lambda r: [cell(v) for v in r[:width]] + [""] * (width - len(r))
     num = lambda i: f"| {i} " if numbered else ""
     lines = [num("row") + "| " + " | ".join(pad(rows[0])) + " |", "|---" * (width + numbered) + "|"]
-    lines += [num(i) + "| " + " | ".join(pad(r)) + " |" for i, r in enumerate(rows[1:max_rows], start=2)]
+    lines += [num(i) + "| " + " | ".join(pad(r)) + " |" for i, r in enumerate(rows[1:max_rows], start=2)
+              if filled(r)]  # skip blank rows; row numbers still match the sheet
     if len(rows) > max_rows:
         lines.append(f"[... {len(rows) - max_rows} more rows; pass a range like 'Tab!A{max_rows + 1}:Z{max_rows * 2}' to read them]")
     return "\n".join(lines)
