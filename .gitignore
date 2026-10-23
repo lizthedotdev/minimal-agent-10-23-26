@@ -2,3 +2,5 @@ __pycache__/
 credentials.json
 token.json
 agent_memory.json
+agent_sheets.txt
+sheets_allowlist.txt

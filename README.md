@@ -84,7 +84,13 @@ The agent can read your Gmail, Calendar, Drive and Docs, and read **and write** 
 4. **Google Auth Platform → Clients → Create client**, Application type **Desktop app** → **Create** → **Download JSON**. Save it in the project folder as `credentials.json` (or point `GOOGLE_CREDENTIALS` at it).
 5. Run `uv run agent.py` and ask something like "what's on my calendar this week?". A browser opens to sign in and grant access. The token is saved to `token.json` (or `GOOGLE_TOKEN`). Delete it to switch accounts.
 
-Access is read-only except for Sheets, which the agent can edit: any sheet you can edit, not just its own (see the scopes in `google_workspace.py`). It writes values as plain text, so a formula copied from an email can't run, and `sheets_update` returns the old values so a bad edit can be undone. If the scopes change, the agent asks you to sign in again. `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
+Access is read-only except for Sheets. Google lets the agent edit any sheet you can edit (see the scopes in `google_workspace.py`), but the code only lets it write to:
+
+- its memory sheets,
+- sheets it created with `sheets_create` (recorded in `agent_sheets.txt`),
+- sheets you list in `sheets_allowlist.txt`, one id or URL per line. The file is created with instructions the first time the agent checks it; set `SHEETS_ALLOWLIST` to keep it elsewhere.
+
+Any other write is refused, and the agent is told to ask you. Both files are per-user and in `.gitignore`. It writes values as plain text, so a formula copied from an email can't run, and `sheets_update` returns the old values so a bad edit can be undone. If the scopes change, the agent asks you to sign in again. `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
 
 **Memory.** On first use the agent creates a folder called **Agent** in your Drive (set `AGENT_FOLDER` to rename it) with three spreadsheets, one per layer of memory:
 
