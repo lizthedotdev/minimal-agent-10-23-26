@@ -32,7 +32,11 @@ def respond(history, user_input, max_turns=MAX_TURNS):
         reply = completion.choices[0].message
         messages.append(reply)  # keep the model's turn, including any tool requests
         if not reply.tool_calls:  # no tools requested: this is the final answer
-            return (reply.content or "").strip()  # some models pad replies with blank lines
+            if (reply.content or "").strip():
+                return reply.content.strip()  # some models pad replies with blank lines
+            # an empty reply (seen after very long tool results) isn't an answer: nudge the model to carry on
+            messages.append({"role": "user", "content": "Your last reply was empty. Continue the task."})
+            continue
         for call in reply.tool_calls:  # run each tool the model asked for
             messages.append(run_tool_call(call))  # tools.py does the work; result goes back to the model
     return f"(Stopped after {max_turns} model calls without a final answer.)"
@@ -50,6 +54,8 @@ def clip_worker():
         print(f"\n[recordings] new recording: {rec['name']}. Clipping in the background...", flush=True)
         try:
             summary = respond([], recordings.task_prompt(rec), max_turns=15)  # its own conversation, not yours
+            if summary.startswith("(Stopped after"):
+                raise RuntimeError(summary)
             recordings.mark(rec["video_id"], "done")
             print(f"\n[recordings] {rec['name']}:\n{summary}\nyou> ", end="", flush=True)
         except Exception as e:
