@@ -2,6 +2,7 @@
 
 import json
 
+import google_workspace as google
 import memory
 
 
@@ -24,7 +25,12 @@ def search_memory(query):
     return "\n".join(f"#{id} ({created_at}): {content}" for id, content, created_at in rows)
 
 
-TOOLS = {"get_time": get_time, "save_memory": save_memory, "search_memory": search_memory}  # name -> python function
+TOOLS = {  # name -> python function
+    "get_time": get_time, "save_memory": save_memory, "search_memory": search_memory,
+    "gmail_search": google.gmail_search, "gmail_read": google.gmail_read,
+    "calendar_events": google.calendar_events, "drive_search": google.drive_search,
+    "docs_read": google.docs_read, "sheets_read": google.sheets_read,
+}
 
 SCHEMAS = [  # what the model is told about each tool (OpenAI-style function schemas)
     {"type": "function", "function": {
@@ -43,6 +49,53 @@ SCHEMAS = [  # what the model is told about each tool (OpenAI-style function sch
         "description": "Search long-term memory by keywords. Use it before answering questions about the user "
                        "or anything that may have come up in a past conversation.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "gmail_search",
+        "description": "Search the user's Gmail. Returns message ids, date, sender, subject and a snippet. "
+                       "Uses Gmail search syntax, e.g. 'from:sam newer_than:7d' or 'subject:invoice is:unread'.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "max_results": {"type": "integer", "description": "Default 10."},
+        }, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "gmail_read",
+        "description": "Read the full text of one email, by the id from gmail_search.",
+        "parameters": {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "calendar_events",
+        "description": "List events on the user's primary Google Calendar. Defaults to the next 7 days.",
+        "parameters": {"type": "object", "properties": {
+            "start": {"type": "string", "description": "ISO date or datetime, e.g. 2026-10-23 or 2026-10-23T09:00."},
+            "end": {"type": "string", "description": "ISO date or datetime."},
+            "query": {"type": "string", "description": "Only events whose text contains these words."},
+            "max_results": {"type": "integer", "description": "Default 25."},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "drive_search",
+        "description": "Find Google Drive files (Docs, Sheets, others) by words in their name or contents. "
+                       "Returns file ids to pass to docs_read or sheets_read.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "max_results": {"type": "integer", "description": "Default 10."},
+        }, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "docs_read",
+        "description": "Read the text of a Google Doc, by the id from drive_search or from its URL.",
+        "parameters": {"type": "object", "properties": {"document_id": {"type": "string"}}, "required": ["document_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "sheets_read",
+        "description": "Read cell values from a Google Sheet, by the id from drive_search or from its URL. "
+                       "Without a range, lists the tabs and reads the first one.",
+        "parameters": {"type": "object", "properties": {
+            "spreadsheet_id": {"type": "string"},
+            "range": {"type": "string", "description": "A1 notation, e.g. 'Sheet1!A1:D50'."},
+        }, "required": ["spreadsheet_id"]},
     }},
 ]
 
