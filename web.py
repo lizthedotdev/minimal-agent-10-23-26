@@ -25,7 +25,8 @@ def _post(path, body):
 
 def web_search(query, max_results=5, topic="general", time_range=None):
     """Search the web. Returns a short answer plus sources with title, url and the relevant content."""
-    body = {"query": query, "max_results": max_results, "topic": topic, "include_answer": True}
+    body = {"query": query, "max_results": max_results, "topic": topic, "include_answer": True,
+            "safe_search": True}  # filter adult/unsafe results; Tavily's default is off, and the model can't turn it off
     if time_range:
         body["time_range"] = time_range  # day, week, month or year
     data = _post("/search", body)
