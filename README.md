@@ -64,14 +64,27 @@ MODEL=openai/gpt-4o-mini uv run agent.py
 
 The model has to support tool calling. If you get errors about tools, try a different model.
 
+## Connecting Google (Gmail, Calendar, Drive, Docs, Sheets)
+
+The agent can read your Gmail, Calendar, Drive, Docs and Sheets. To set it up once:
+
+1. In [console.cloud.google.com](https://console.cloud.google.com) create (or pick) a project.
+2. **APIs & Services → Library**: enable Gmail API, Google Calendar API, Google Drive API, Google Docs API and Google Sheets API.
+3. **Google Auth Platform** (formerly "OAuth consent screen") → **Get started**: fill in an app name and support email. Choose Audience **Internal** if you're on Google Workspace (no review, and tokens don't expire). Otherwise choose External and add yourself under **Test users**. In Testing mode the sign-in expires every 7 days; delete `token.json` and sign in again.
+4. **Google Auth Platform → Clients → Create client**, Application type **Desktop app** → **Create** → **Download JSON**. Save it in the project folder as `credentials.json` (or point `GOOGLE_CREDENTIALS` at it).
+5. Run `uv run agent.py` and ask something like "what's on my calendar this week?". A browser opens to sign in and grant read-only access. The token is saved to `token.json` (or `GOOGLE_TOKEN`). Delete it to switch accounts.
+
+Access is read-only (see the scopes in `google_workspace.py`). `credentials.json` and `token.json` are secrets, so they're in `.gitignore`.
+
 ## How it works
 
 | File | What it does |
 |---|---|
 | `agent.py` | The main loop. It reads your input, calls the model, runs any tools the model asks for, and prints the answer. |
 | `prompt.py` | Builds the list of messages the model sees: the system prompt, the conversation so far, and your new message. |
-| `tools.py` | The tools the model can call (`get_time`, `save_memory` and `search_memory`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
+| `tools.py` | The tools the model can call (`get_time`, `save_memory`, `search_memory`, and the read-only Google tools `gmail_search`, `gmail_read`, `calendar_events`, `drive_search`, `docs_read` and `sheets_read`), plus the descriptions the model reads to decide when to use them. Tool errors go back to the model as text instead of crashing the agent. |
 | `memory.py` | Long-term memory: notes stored in a SQLite file (`memory.db`, or set `MEMORY_DB`) and searched with SQLite's built-in full-text search. Delete the file to forget everything. |
+| `google_workspace.py` | Read-only access to Gmail, Calendar, Drive, Docs and Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 
 One turn of the conversation goes like this:
 
