@@ -72,7 +72,7 @@ The `web_search` and `web_read` tools use [Tavily](https://tavily.com). Create a
 export TAVILY_API_KEY=tvly-...
 ```
 
-Without it, the agent still runs; the web tools just report that they aren't set up.
+Without it, the agent still runs; the web tools just report that they aren't set up. SafeSearch is always on, so adult and unsafe results are filtered out.
 
 ## Connecting Google (Gmail, Calendar, Drive, Docs, Sheets)
 
@@ -106,6 +106,7 @@ You can open any of them in the browser to see or correct what the agent remembe
 | `memory.py` | The agent's three layers of memory (core, recent, long-term), each a Google Sheet in its Drive folder. Puts core memory and recent notes into the prompt, and moves old notes to long-term. |
 | `google_workspace.py` | Read access to Gmail, Calendar, Drive and Docs; read and write access to Sheets. Handles the Google sign-in and saves the token to `token.json`. |
 | `web.py` | Web search (`web_search`) and page reading (`web_read`) through [Tavily](https://tavily.com). Set `TAVILY_API_KEY` to turn them on. |
+| `guard.py` | Screens text from email, the web, Docs, Sheets, Calendar and memory for prompt injection before the model sees it. Each chunk is classified by `openai/gpt-oss-safeguard-20b` (set `GUARD_MODEL` to change it); flagged chunks become `[removed: possible prompt injection]`, and chunks that can't be checked are withheld. |
 | `google_format.py` | Turns raw Google API responses into compact text for the model: one labelled block per result with its id, local times with "tomorrow"/"3 days ago", HTML and quoted replies stripped, docs and sheets as markdown, and a note whenever something is cut or nothing is found. |
 
 One turn of the conversation goes like this:

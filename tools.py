@@ -3,6 +3,7 @@
 import json
 
 import google_workspace as google
+import guard
 import memory
 import web
 
@@ -14,6 +15,11 @@ def get_time():
 
 
 
+
+UNTRUSTED = {  # tools whose results contain text other people wrote; screened for prompt injection first
+    "gmail_search", "gmail_read", "calendar_events", "drive_search", "docs_read", "sheets_read",
+    "web_search", "web_read", "search_memory",  # memory too: an injection saved once would come back every time
+}
 
 TOOLS = {  # name -> python function
     "get_time": get_time,
@@ -181,6 +187,8 @@ def run_tool_call(call):
             raise LookupError(f"no tool named {call.function.name!r}")
         args = json.loads(call.function.arguments or "{}")  # the model sends arguments as a JSON string
         result = func(**args)
+        if call.function.name in UNTRUSTED:
+            result = guard.screen(str(result))
     except json.JSONDecodeError as e:
         result = f"Error: arguments were not valid JSON ({e})."
     except Exception as e:  # bad arguments, database errors, ...: tell the model instead of crashing
